@@ -77,4 +77,4 @@ Press `Fn + F5` (macOS) or `F5` (Windows/Linux) to launch the Extension Developm
 
 ## License
 
-MIT
+GPL-3.0
