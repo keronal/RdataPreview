@@ -1,0 +1,52 @@
+{
+  "name": "rdata-preview",
+  "displayName": "RData Preview",
+  "description": "Preview .RData, .rda, and .rds files directly in VS Code",
+  "version": "0.1.0",
+  "publisher": "afnuauw",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": ["Data Science", "Visualization"],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "rdataPreview.editor",
+        "displayName": "RData Preview",
+        "selector": [
+          { "filenamePattern": "*.RData" },
+          { "filenamePattern": "*.rda" },
+          { "filenamePattern": "*.rds" }
+        ],
+        "priority": "default"
+      }
+    ],
+    "configuration": {
+      "title": "RData Preview",
+      "properties": {
+        "rdataPreview.rscriptPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to Rscript executable. Leave empty to use PATH."
+        },
+        "rdataPreview.maxRows": {
+          "type": "number",
+          "default": 1000,
+          "description": "Maximum number of rows to preview for data frames."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.80.0",
+    "@types/node": "^18.0.0",
+    "typescript": "^5.0.0"
+  }
+}
