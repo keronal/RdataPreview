@@ -7,7 +7,10 @@
   "engines": {
     "vscode": "^1.80.0"
   },
-  "categories": ["Data Science", "Visualization"],
+  "categories": [
+    "Data Science",
+    "Visualization"
+  ],
   "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
@@ -16,9 +19,15 @@
         "viewType": "rdataPreview.editor",
         "displayName": "RData Preview",
         "selector": [
-          { "filenamePattern": "*.RData" },
-          { "filenamePattern": "*.rda" },
-          { "filenamePattern": "*.rds" }
+          {
+            "filenamePattern": "*.RData"
+          },
+          {
+            "filenamePattern": "*.rda"
+          },
+          {
+            "filenamePattern": "*.rds"
+          }
         ],
         "priority": "default"
       }
@@ -45,8 +54,9 @@
     "vscode:prepublish": "npm run compile"
   },
   "devDependencies": {
-    "@types/vscode": "^1.80.0",
     "@types/node": "^18.0.0",
+    "@types/vscode": "^1.80.0",
+    "@vscode/vsce": "^3.9.2",
     "typescript": "^5.0.0"
   }
 }
