@@ -146,25 +146,66 @@ build_tree <- function(obj, depth, max_depth, max_rows) {
     return(list(type = "truncated", value = "... (max depth reached)"))
   }
 
-  if (is.data.frame(obj)) {
+  if (inherits(obj, "data.frame")) {
+    obj <- as.data.frame(obj)
+    preview_rows <- min(max_rows, nrow(obj))
+    preview <- obj[seq_len(preview_rows), , drop = FALSE]
+    for (col_name in names(preview)) {
+      if (is.factor(preview[[col_name]])) {
+        preview[[col_name]] <- as.character(preview[[col_name]])
+      } else if (inherits(preview[[col_name]], "POSIXt")) {
+        preview[[col_name]] <- as.character(preview[[col_name]])
+      } else if (inherits(preview[[col_name]], "Date")) {
+        preview[[col_name]] <- as.character(preview[[col_name]])
+      }
+    }
+    cols <- lapply(names(obj), function(col_name) {
+      list(name = col_name, type = class(obj[[col_name]])[1], typeof = typeof(obj[[col_name]]))
+    })
     return(list(
       type = "data.frame",
       nrow = nrow(obj),
       ncol = ncol(obj),
-      columns = names(obj)
+      columns = cols,
+      data = preview,
+      truncated = nrow(obj) > max_rows
+    ))
+  }
+
+  if (is.matrix(obj)) {
+    nr <- nrow(obj)
+    nc <- ncol(obj)
+    preview_rows <- min(max_rows, nr)
+    df <- as.data.frame(obj[seq_len(preview_rows), , drop = FALSE])
+    col_names <- colnames(obj)
+    if (is.null(col_names) || all(col_names == "")) {
+      col_names <- paste0("V", seq_len(nc))
+      names(df) <- col_names
+    }
+    cols <- lapply(names(df), function(col_name) {
+      list(name = col_name, type = class(df[[col_name]])[1], typeof = typeof(df[[col_name]]))
+    })
+    return(list(
+      type = paste0("matrix[", nr, "×", nc, "]"),
+      nrow = nr,
+      ncol = nc,
+      columns = cols,
+      data = df,
+      truncated = nr > max_rows
     ))
   }
 
   if (is.atomic(obj) && !is.null(obj)) {
-    val <- if (length(obj) <= 10) {
+    preview_len <- 20
+    val <- if (length(obj) <= preview_len) {
       if (is.factor(obj)) as.character(obj) else obj
     } else {
-      if (is.factor(obj)) as.character(obj[1:10]) else obj[1:10]
+      if (is.factor(obj)) as.character(obj[1:preview_len]) else obj[1:preview_len]
     }
     return(list(
       type = paste0(class(obj)[1], "[", length(obj), "]"),
       value = val,
-      truncated = length(obj) > 10
+      truncated = length(obj) > preview_len
     ))
   }
 

@@ -32,6 +32,9 @@
   /** @type {string | null} */
   let viewModeOverride = null;
 
+  // Tree search
+  let treeSearchQuery = '';
+
   // ── Message Handler ──
   window.addEventListener('message', (event) => {
     const msg = event.data;
@@ -47,6 +50,7 @@
         activeObjectIndex = 0;
         resetTableState();
         viewModeOverride = null;
+        treeSearchQuery = '';
         render();
         break;
     }
@@ -74,28 +78,18 @@
     filteredRows = null;
   }
 
-  /**
-   * Determine whether this object can show table view, tree view, or both.
-   * @param {RObjectInfo} obj
-   * @returns {{ canTable: boolean, canTree: boolean }}
-   */
+  /** @param {RObjectInfo} obj */
   function getViewCapabilities(obj) {
     if (obj.viewType === 'table') {
-      // Table objects always have data; they also have tree if the R script provided it
       return { canTable: true, canTree: !!obj.tree };
     }
     if (obj.viewType === 'tree') {
-      // Tree objects may also have table data if R coercion succeeded
       return { canTable: !!(obj.canTable && obj.data && obj.columns), canTree: true };
     }
     return { canTable: false, canTree: false };
   }
 
-  /**
-   * Determine actual view mode for an object.
-   * @param {RObjectInfo} obj
-   * @returns {string}
-   */
+  /** @param {RObjectInfo} obj */
   function getEffectiveViewMode(obj) {
     const caps = getViewCapabilities(obj);
     if (viewModeOverride) {
@@ -144,41 +138,29 @@
         activeObjectIndex = parseInt(/** @type {HTMLElement} */ (el).dataset.index || '0', 10);
         resetTableState();
         viewModeOverride = null;
+        treeSearchQuery = '';
         render();
       });
     });
   }
 
-  // ── View Toggle Button HTML ──
-  /**
-   * @param {RObjectInfo} obj
-   * @returns {string}
-   */
+  // ── View Toggle ──
+  /** @param {RObjectInfo} obj */
   function renderViewToggle(obj) {
     const caps = getViewCapabilities(obj);
     if (!caps.canTable || !caps.canTree) return '';
-
     const mode = getEffectiveViewMode(obj);
     return `
       <div class="view-toggle">
-        <button class="toggle-btn ${mode === 'table' ? 'active' : ''}" data-mode="table" title="Table View">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M0 2v12h16V2H0zm5 11H1v-2h4v2zm0-3H1V8h4v2zm0-3H1V5h4v2zm10 6H6v-2h9v2zm0-3H6V8h9v2zm0-3H6V5h9v2z"/>
-          </svg>
-          Table
-        </button>
-        <button class="toggle-btn ${mode === 'tree' ? 'active' : ''}" data-mode="tree" title="Tree View">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M1 1h4v4H1V1zm6 0h4v4H7V1zM1 7h4v4H1V7zm6 0h4v4H7V7zM1 13h4v2H1v-2zm6 0h4v2H7v-2z"/>
-          </svg>
-          Tree
-        </button>
+        <button class="toggle-btn ${mode === 'table' ? 'active' : ''}" data-mode="table" title="Table View">⊞ Table</button>
+        <button class="toggle-btn ${mode === 'tree' ? 'active' : ''}" data-mode="tree" title="Tree View">⊟ Tree</button>
       </div>
     `;
   }
 
   // ── Object Rendering ──
-  function renderObject(/** @type {RObjectInfo} */ obj) {
+  /** @param {RObjectInfo} obj */
+  function renderObject(obj) {
     const mode = getEffectiveViewMode(obj);
     switch (mode) {
       case 'table':
@@ -204,22 +186,24 @@
     // Attach toggle handlers
     DOM.toolbar.querySelectorAll('.toggle-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
-        const mode = /** @type {HTMLElement} */ (btn).dataset.mode;
-        viewModeOverride = mode || null;
+        viewModeOverride = /** @type {HTMLElement} */ (btn).dataset.mode || null;
         resetTableState();
         renderObject(obj);
       });
     });
   }
 
-  // ── Table View ──
-  function renderTableView(/** @type {RObjectInfo} */ obj) {
+  // ══════════════════════════════════════════
+  // ██  TABLE VIEW
+  // ══════════════════════════════════════════
+
+  /** @param {RObjectInfo} obj */
+  function renderTableView(obj) {
     const columns = obj.columns || [];
     const allRows = obj.data || [];
     const totalRowsInFile = obj.nrow || allRows.length;
 
-    // Toolbar
-    let toolbarHtml = `
+    DOM.toolbar.innerHTML = `
       <div class="toolbar-info">
         <strong>${escapeHtml(obj.name)}</strong>
         — ${totalRowsInFile.toLocaleString()} rows × ${(obj.ncol || columns.length)} cols
@@ -228,9 +212,7 @@
       ${renderViewToggle(obj)}
       <input class="search-box" type="text" placeholder="Search…" value="${escapeHtml(searchQuery)}">
     `;
-    DOM.toolbar.innerHTML = toolbarHtml;
 
-    // Search handler
     const searchBox = /** @type {HTMLInputElement} */ (DOM.toolbar.querySelector('.search-box'));
     searchBox.addEventListener('input', () => {
       searchQuery = searchBox.value;
@@ -242,13 +224,13 @@
     renderTableContent(columns, allRows, totalRowsInFile, obj.truncated || false);
   }
 
-  function renderTableContent(
-    /** @type {{ name: string; type: string }[]} */ columns,
-    /** @type {Record<string, unknown>[]} */ allRows,
-    /** @type {number} */ totalRowsInFile,
-    /** @type {boolean} */ truncated
-  ) {
-    // Apply search filter
+  /**
+   * @param {{ name: string; type: string }[]} columns
+   * @param {Record<string, unknown>[]} allRows
+   * @param {number} totalRowsInFile
+   * @param {boolean} truncated
+   */
+  function renderTableContent(columns, allRows, totalRowsInFile, truncated) {
     let rows = allRows;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
@@ -261,7 +243,6 @@
     }
     filteredRows = rows;
 
-    // Apply sort
     if (sortColumn >= 0 && sortColumn < columns.length) {
       const colName = columns[sortColumn].name;
       rows = [...rows].sort((a, b) => {
@@ -272,19 +253,17 @@
         if (typeof va === 'number' && typeof vb === 'number') {
           return sortAsc ? va - vb : vb - va;
         }
-        const sa = String(va);
-        const sb = String(vb);
-        return sortAsc ? sa.localeCompare(sb) : sb.localeCompare(sa);
+        return sortAsc
+          ? String(va).localeCompare(String(vb))
+          : String(vb).localeCompare(String(va));
       });
     }
 
-    // Pagination
     const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
     if (currentPage >= totalPages) currentPage = totalPages - 1;
     const startIdx = currentPage * PAGE_SIZE;
     const pageRows = rows.slice(startIdx, startIdx + PAGE_SIZE);
 
-    // Build table
     let html = '<div class="table-wrapper"><table class="data-table"><thead><tr>';
     html += '<th class="row-index-header">#</th>';
     columns.forEach((col, idx) => {
@@ -312,15 +291,11 @@
       });
       html += '</tr>';
     });
-
     html += '</tbody></table></div>';
 
-    // Truncation notice
     if (truncated) {
-      html += `<div class="truncation-notice">Showing first ${allRows.length.toLocaleString()} rows (file has more). Adjust rdataPreview.maxRows to change limit.</div>`;
+      html += `<div class="truncation-notice">Showing first ${allRows.length.toLocaleString()} rows. Adjust rdataPreview.maxRows to change limit.</div>`;
     }
-
-    // Pagination controls
     if (totalPages > 1) {
       html += `<div class="pagination">
         <button id="pg-first" ${currentPage === 0 ? 'disabled' : ''}>⟪</button>
@@ -338,18 +313,13 @@
     DOM.viewContainer.querySelectorAll('th[data-col]').forEach((th) => {
       th.addEventListener('click', () => {
         const col = parseInt(/** @type {HTMLElement} */ (th).dataset.col || '0', 10);
-        if (sortColumn === col) {
-          sortAsc = !sortAsc;
-        } else {
-          sortColumn = col;
-          sortAsc = true;
-        }
+        if (sortColumn === col) { sortAsc = !sortAsc; }
+        else { sortColumn = col; sortAsc = true; }
         currentPage = 0;
         renderTableContent(columns, allRows, 0, truncated);
       });
     });
 
-    // Pagination handlers
     const bind = (/** @type {string} */ id, /** @type {() => void} */ fn) => {
       const el = document.getElementById(id);
       if (el) el.addEventListener('click', fn);
@@ -360,8 +330,12 @@
     bind('pg-last', () => { currentPage = totalPages - 1; renderTableContent(columns, allRows, 0, truncated); });
   }
 
-  // ── Tree View ──
-  function renderTreeView(/** @type {RObjectInfo} */ obj) {
+  // ══════════════════════════════════════════
+  // ██  TREE VIEW (enhanced)
+  // ══════════════════════════════════════════
+
+  /** @param {RObjectInfo} obj */
+  function renderTreeView(obj) {
     DOM.toolbar.innerHTML = `
       <div class="toolbar-info">
         <strong>${escapeHtml(obj.name)}</strong>
@@ -370,42 +344,110 @@
         ${obj.nrow !== undefined ? ' · ' + obj.nrow + ' rows × ' + obj.ncol + ' cols' : ''}
       </div>
       ${renderViewToggle(obj)}
+      <input class="search-box tree-search" type="text" placeholder="Filter keys…" value="${escapeHtml(treeSearchQuery)}">
+      <button class="toolbar-btn" id="expand-all" title="Expand All">⊞ Expand</button>
+      <button class="toolbar-btn" id="collapse-all" title="Collapse All">⊟ Collapse</button>
     `;
 
+    // Search handler
+    const searchBox = /** @type {HTMLInputElement} */ (DOM.toolbar.querySelector('.tree-search'));
+    searchBox.addEventListener('input', () => {
+      treeSearchQuery = searchBox.value;
+      renderTreeContent(obj);
+    });
+
+    renderTreeContent(obj);
+
+    // Expand/collapse all handlers
+    document.getElementById('expand-all')?.addEventListener('click', () => {
+      DOM.viewContainer.querySelectorAll('.tree-children.collapsed').forEach((el) => el.classList.remove('collapsed'));
+      DOM.viewContainer.querySelectorAll('.tree-toggle').forEach((el) => {
+        if (!el.classList.contains('leaf')) el.classList.add('expanded');
+      });
+    });
+    document.getElementById('collapse-all')?.addEventListener('click', () => {
+      DOM.viewContainer.querySelectorAll('.tree-children').forEach((el) => el.classList.add('collapsed'));
+      DOM.viewContainer.querySelectorAll('.tree-toggle.expanded').forEach((el) => el.classList.remove('expanded'));
+    });
+  }
+
+  /** @param {RObjectInfo} obj */
+  function renderTreeContent(obj) {
     const tree = obj.tree;
-    DOM.viewContainer.innerHTML = `<div class="tree-view">${renderTreeNode('root', tree, 0, true)}</div>`;
+    const html = `<div class="tree-view">${renderTreeNode('root', tree, 0, true)}</div>`;
+    DOM.viewContainer.innerHTML = html;
     attachTreeHandlers();
   }
 
-  function renderTreeNode(
-    /** @type {string} */ name,
-    /** @type {any} */ node,
-    /** @type {number} */ depth,
-    /** @type {boolean} */ expanded
-  ) {
-    if (!node) return '';
-
-    const hasChildren = node.children && Object.keys(node.children).length > 0;
-    const toggleClass = hasChildren ? (expanded ? 'tree-toggle expanded' : 'tree-toggle') : 'tree-toggle leaf';
-
-    let valueStr = '';
+  /**
+   * Check if a tree node (or any of its descendants) matches the search query.
+   * @param {string} name
+   * @param {any} node
+   * @param {string} query
+   * @returns {boolean}
+   */
+  function treeNodeMatches(name, node, query) {
+    if (!query) return true;
+    const q = query.toLowerCase();
+    if (name.toLowerCase().includes(q)) return true;
+    // Check value
     if (node.value !== undefined && node.value !== null) {
-      if (Array.isArray(node.value)) {
-        valueStr = node.value.map((/** @type {any} */ v) => JSON.stringify(v)).join(', ');
-        if (node.truncated) valueStr += ', …';
-      } else {
-        valueStr = String(node.value);
+      const valStr = Array.isArray(node.value) ? node.value.join(', ') : String(node.value);
+      if (valStr.toLowerCase().includes(q)) return true;
+    }
+    if (node.type && node.type.toLowerCase().includes(q)) return true;
+    // Check children recursively
+    if (node.children) {
+      for (const [childName, childNode] of Object.entries(node.children)) {
+        if (treeNodeMatches(childName, childNode, query)) return true;
       }
     }
+    return false;
+  }
+
+  /**
+   * @param {string} name
+   * @param {any} node
+   * @param {number} depth
+   * @param {boolean} expanded
+   * @returns {string}
+   */
+  function renderTreeNode(name, node, depth, expanded) {
+    if (!node) return '';
+
+    // Filter by search
+    if (treeSearchQuery && !treeNodeMatches(name, node, treeSearchQuery)) {
+      return '';
+    }
+    // If searching, auto-expand matches
+    if (treeSearchQuery) expanded = true;
+
+    const hasChildren = node.children && Object.keys(node.children).length > 0;
+    const hasInlineTable = (node.type === 'data.frame' || node.type.startsWith('matrix[')) && node.data;
+    const isExpandable = hasChildren || hasInlineTable;
+    const toggleClass = isExpandable
+      ? (expanded ? 'tree-toggle expanded' : 'tree-toggle')
+      : 'tree-toggle leaf';
+
+    // Format value display
+    let valueHtml = '';
+    if (node.value !== undefined && node.value !== null) {
+      valueHtml = formatTreeValue(node);
+    }
+
+    // Type badge
+    const typeStr = node.type || '';
+    const typeBadgeClass = getTypeBadgeClass(typeStr);
 
     let html = `<div class="tree-node">
       <div class="tree-node-header" style="--depth: ${depth}">
         <span class="${toggleClass}">▶</span>
         <span class="tree-node-name">${escapeHtml(name)}</span>
-        <span class="tree-node-type">${escapeHtml(node.type || '')}</span>
-        ${valueStr ? `<span class="tree-node-value" title="${escapeHtml(valueStr)}">${escapeHtml(valueStr)}</span>` : ''}
+        <span class="tree-type-badge ${typeBadgeClass}">${escapeHtml(typeStr)}</span>
+        ${valueHtml}
       </div>`;
 
+    // Children (list items)
     if (hasChildren) {
       const childClass = expanded ? 'tree-children' : 'tree-children collapsed';
       html += `<div class="${childClass}">`;
@@ -415,16 +457,113 @@
       html += '</div>';
     }
 
-    // If it's a data.frame node in tree, show inline summary
-    if (node.type === 'data.frame' && node.columns) {
-      const cols = /** @type {string[]} */ (node.columns);
-      html += `<div class="tree-children${expanded ? '' : ' collapsed'}" style="padding-left: ${(depth + 1) * 16 + 8}px">
-        <span class="tree-node-type">${node.nrow}×${node.ncol}: ${cols.slice(0, 5).join(', ')}${cols.length > 5 ? '…' : ''}</span>
-      </div>`;
+    // Inline data.frame table
+    if (hasInlineTable) {
+      html += renderInlineTable(node, depth, expanded);
     }
 
     html += '</div>';
     return html;
+  }
+
+  /**
+   * Render an inline mini-table for data.frame nodes inside a tree.
+   * @param {any} node
+   * @param {number} depth
+   * @param {boolean} expanded
+   * @returns {string}
+   */
+  function renderInlineTable(node, depth, expanded) {
+    const columns = node.columns || [];
+    const rows = node.data || [];
+    if (!Array.isArray(columns) || columns.length === 0) return '';
+
+    const childClass = expanded ? 'tree-children inline-table-wrapper' : 'tree-children inline-table-wrapper collapsed';
+    let html = `<div class="${childClass}" style="--depth: ${depth}">`;
+    html += `<div class="inline-table-info">${node.nrow} rows × ${node.ncol} cols${node.truncated ? ' (truncated)' : ''}</div>`;
+    html += '<div class="inline-table-scroll"><table class="inline-table"><thead><tr>';
+
+    // Column headers
+    columns.forEach((col) => {
+      const colName = typeof col === 'string' ? col : col.name;
+      const colType = typeof col === 'object' && col.type ? col.type : '';
+      html += `<th>${escapeHtml(colName)}${colType ? `<span class="col-type"> &lt;${escapeHtml(colType)}&gt;</span>` : ''}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+
+    // Rows (show up to 50 inline)
+    const displayRows = rows.slice(0, 50);
+    displayRows.forEach((row) => {
+      html += '<tr>';
+      columns.forEach((col) => {
+        const colName = typeof col === 'string' ? col : col.name;
+        const val = row[colName];
+        if (val === null || val === undefined || val === 'NA') {
+          html += `<td><span class="na-value">NA</span></td>`;
+        } else {
+          html += `<td>${escapeHtml(String(val))}</td>`;
+        }
+      });
+      html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+
+    if (rows.length > 50) {
+      html += `<div class="inline-table-more">Showing 50 of ${rows.length} rows</div>`;
+    }
+    html += '</div>';
+    return html;
+  }
+
+  /**
+   * Format a tree node value for display.
+   * @param {any} node
+   * @returns {string}
+   */
+  function formatTreeValue(node) {
+    if (node.value === undefined || node.value === null) return '';
+
+    if (Array.isArray(node.value)) {
+      const items = node.value.map((/** @type {any} */ v) => {
+        if (v === null) return '<span class="na-value">NA</span>';
+        if (typeof v === 'string') return `<span class="val-string">"${escapeHtml(v)}"</span>`;
+        if (typeof v === 'boolean') return `<span class="val-bool">${v}</span>`;
+        return `<span class="val-num">${v}</span>`;
+      });
+      let display = items.slice(0, 8).join(', ');
+      if (items.length > 8 || node.truncated) display += ', <span class="val-ellipsis">…</span>';
+      return `<span class="tree-node-value">[${display}]</span>`;
+    }
+
+    const v = node.value;
+    if (typeof v === 'string') {
+      const truncated = v.length > 80 ? v.slice(0, 80) + '…' : v;
+      return `<span class="tree-node-value"><span class="val-string">"${escapeHtml(truncated)}"</span></span>`;
+    }
+    if (typeof v === 'number') {
+      return `<span class="tree-node-value"><span class="val-num">${v}</span></span>`;
+    }
+    if (typeof v === 'boolean') {
+      return `<span class="tree-node-value"><span class="val-bool">${v}</span></span>`;
+    }
+    return `<span class="tree-node-value">${escapeHtml(String(v))}</span>`;
+  }
+
+  /**
+   * Get CSS class for type badge based on type name.
+   * @param {string} type
+   * @returns {string}
+   */
+  function getTypeBadgeClass(type) {
+    if (type.startsWith('integer') || type.startsWith('numeric') || type.startsWith('double')) return 'type-num';
+    if (type.startsWith('character')) return 'type-chr';
+    if (type.startsWith('logical')) return 'type-lgl';
+    if (type.startsWith('factor')) return 'type-fct';
+    if (type === 'data.frame') return 'type-df';
+    if (type.startsWith('matrix')) return 'type-df';
+    if (type.startsWith('list')) return 'type-list';
+    if (type === 'NULL') return 'type-null';
+    return '';
   }
 
   function attachTreeHandlers() {
@@ -433,16 +572,24 @@
         const toggle = header.querySelector('.tree-toggle');
         if (!toggle || toggle.classList.contains('leaf')) return;
         toggle.classList.toggle('expanded');
-        const children = /** @type {HTMLElement | null} */ (header.nextElementSibling);
-        if (children && children.classList.contains('tree-children')) {
-          children.classList.toggle('collapsed');
+        // Toggle all direct sibling tree-children divs
+        let sibling = header.nextElementSibling;
+        while (sibling) {
+          if (sibling.classList.contains('tree-children')) {
+            sibling.classList.toggle('collapsed');
+          }
+          sibling = sibling.nextElementSibling;
         }
       });
     });
   }
 
-  // ── Atomic View ──
-  function renderAtomicView(/** @type {RObjectInfo} */ obj) {
+  // ══════════════════════════════════════════
+  // ██  ATOMIC VIEW
+  // ══════════════════════════════════════════
+
+  /** @param {RObjectInfo} obj */
+  function renderAtomicView(obj) {
     DOM.toolbar.innerHTML = `
       <div class="toolbar-info">
         <strong>${escapeHtml(obj.name)}</strong>
@@ -475,8 +622,12 @@
     DOM.viewContainer.innerHTML = html;
   }
 
-  // ── Text View ──
-  function renderTextView(/** @type {RObjectInfo} */ obj) {
+  // ══════════════════════════════════════════
+  // ██  TEXT VIEW
+  // ══════════════════════════════════════════
+
+  /** @param {RObjectInfo} obj */
+  function renderTextView(obj) {
     DOM.toolbar.innerHTML = `
       <div class="toolbar-info">
         <strong>${escapeHtml(obj.name)}</strong>
@@ -487,7 +638,8 @@
   }
 
   // ── Utility ──
-  function escapeHtml(/** @type {string} */ str) {
+  /** @param {string} str */
+  function escapeHtml(str) {
     return str
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
